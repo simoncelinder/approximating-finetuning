@@ -18,7 +18,7 @@ setup(
     name='approximating-finetuning',
     version='0.0.1',
     python_version='3.10',
-    description='AI alignment jam on testing',
+    description='Blending of language models',
     install_requires=[
         'openai==0.25.0',
         'jupyterlab==3.5.2',
