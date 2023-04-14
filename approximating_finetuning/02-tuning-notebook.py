@@ -19,22 +19,37 @@ with open(f'data/lps_list_{look_for_n_rows}.pkl', 'rb') as f:
     
 with open(f'data/other_list_{look_for_n_rows}.pkl', 'rb') as f:
     other_list = pickle.load(f)
-# -
 
-true_tokens = [r['token'] for r in other_list]
+# +
+# We previously distinguished only train and test to ensure not fine tuning
+# a small base model through OpenAI API on test data.
+# We now also split the test set into val (for tuning) and test (final score), 
+# to ensure hyperparameter tuning isnt overfitted.
+share_val = 0.5
+n_val = int(len(lps_list)*share_val)
+
+lps_list_val = lps_list[0:n_val]
+other_list_val = other_list[0:n_val]
+
+lps_list_test = lps_list[n_val::]
+other_list_test = other_list[n_val::]
+
+true_tokens_val = [r['token'] for r in other_list_val]
+true_tokens_test = [r['token'] for r in other_list_test]
+# -
 
 # Baselines
 # TODO: Presumably the 4.85% nan is just when the true token didnt exist even in davinci?
-h.calculate_perplexity_per_model(lps_list, true_tokens)
+h.calculate_perplexity_per_model(lps_list_test, true_tokens_test)
 
 # +
 study_name = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 study = optuna.create_study()
-n_trials = 100
+n_trials = 250
     
 def objective(trial):
-    blend_res = h.blend_pipeline(
-        lp_dicts = lps_list,
+    blend_res_val = h.blend_pipeline(
+        lp_dicts = lps_list_val,
         small_untuned_temperature=trial.suggest_float('small_untuned_temperature', 0.5, 2),
         small_tuned_temperature=trial.suggest_float('small_tuned_temperature', 0.5, 2),
         big_temperature=trial.suggest_float('big_temperature', 0.5, 2),
@@ -42,7 +57,7 @@ def objective(trial):
     )
     
     # TODO simplify
-    ppl_all = h.calculate_perplexity_per_model(blend_res, true_tokens)
+    ppl_all = h.calculate_perplexity_per_model(blend_res_val, true_tokens_val)
     ppl = ppl_all['blended']
     return ppl
 
@@ -51,13 +66,21 @@ study.optimize(objective, n_trials=n_trials)
 
 study.best_params
 
+blend_res_test = h.blend_pipeline(
+    lp_dicts = lps_list_test,
+    **study.best_params,   
+)
+blend_ppl_test = h.calculate_perplexity_per_model(blend_res_test, true_tokens_test)['blended']
+
 {
-    **{'blended': study.best_value},
-    **h.calculate_perplexity_per_model(lps_list, true_tokens)
+    **{'blended': blend_ppl_test},
+    **h.calculate_perplexity_per_model(lps_list_test, true_tokens_test)
 }
 
-joblib.dump(study, f'hyperparam_studies/{study_name}.pkl')
+# +
+#joblib.dump(study, f'hyperparam_studies/{study_name}.pkl')
+# -
 
-
+len(lps_list_test)
 
 

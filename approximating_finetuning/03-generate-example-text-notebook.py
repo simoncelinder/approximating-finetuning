@@ -1,8 +1,6 @@
 # %load_ext autoreload
 # %autoreload 2
 
-
-
 # +
 from transformers import GPT2TokenizerFast
 
