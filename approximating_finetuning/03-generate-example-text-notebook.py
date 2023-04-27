@@ -2,6 +2,8 @@
 # %autoreload 2
 
 # +
+from IPython.display import clear_output
+
 from transformers import GPT2TokenizerFast
 
 import approximating_finetuning.helpers as h
@@ -21,35 +23,55 @@ model_shortname_engine_dict = {
 }
 
 tokenizer = GPT2TokenizerFast.from_pretrained("gpt2") 
-
-# +
-text_example = "Once upon a time, there was a little prince, living in a beautiful castle with his step father. As it came to pass, "
-tokens = tokenizer(text_example)['input_ids']
-n_new_tokens = 100
-
-print(f'Start: {tokenizer.decode(tokens)}') 
-for i in range(n_new_tokens):
-    res_dict = h.query_api_for_models(
-        model_shortname_engine_dict=model_shortname_engine_dict,
-        n_logprobs=100,
-        prompt_tokens=tokens,
-        tokenizer=tokenizer,
-    )
-
-    lps_list, other_empty = h.alignment_pipeline([res_dict])
-    
-    blend_res = h.blend_pipeline(
-            lp_dicts = lps_list,
-            **params,
-    )
-
-    next_token = h.sample_token(blend_res[0]['blended'])
-    tokens.append(next_token)
-    print(tokenizer.decode(next_token))
-    
-print(f"With completion: {tokenizer.decode(tokens)}")
 # -
 
+n_new_tokens = 20
+text_example = "Once upon a time, there was a little prince, living in a beautiful castle with his step father. As it came to pass, "
+
+# ## Blended model
+
+# +
+tokens = tokenizer(text_example)['input_ids']
+words = tokenizer.decode(tokens)
+
+try:
+    for i in range(n_new_tokens):
+        res_dict = h.query_api_for_models(
+            model_shortname_engine_dict=model_shortname_engine_dict,
+            n_logprobs=100,
+            prompt_tokens=tokens,
+            tokenizer=tokenizer,
+        )
+
+        lps_list, _ = h.alignment_pipeline([res_dict])
+
+        blend_res = h.blend_pipeline(
+                lp_dicts = lps_list,
+                **params,
+        )
+
+        next_token = h.sample_token(blend_res[0]['blended'])
+        tokens.append(next_token)
+        words += tokenizer.decode(next_token)
+        words = words.replace("\n\n", "\n")
+        print(words, end=" ")
+
+        clear_output(wait=True)
+except KeyboardInterrupt:
+    pass
+# -
+# ## Comparison model
+
+comparison_model = 'text-davinci-003'
+words_compare = words  # Immutable == Ok
+try:
+    for i in range(n_new_tokens):
+        words_compare += h.generate_text(words_compare, comparison_model)
+        words_compare = words_compare.replace("\n\n", "\n")
+        print(words_compare, end=" ")
+        clear_output(wait=True)
+except KeyboardInterrupt:
+    pass
 
 
 

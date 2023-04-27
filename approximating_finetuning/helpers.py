@@ -1,11 +1,12 @@
 import os
 import random
-from typing import List, Dict, Any, Callable, Union
+from typing import List, Dict, Any, Callable, Union, Tuple
 
 import numpy as np
 import pandas as pd
 import openai
-from transformers.models.gpt2.tokenization_gpt2_fast import GPT2TokenizerFast
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from transformers import GPT2TokenizerFast
 
 
 api_key_abspath = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'api_key')
@@ -242,6 +243,21 @@ def model_results_to_list_of_dicts(
 
     return result_list
 
+def generate_and_tokenize_logprobs(
+    model_shortname: str,
+    engine: str,
+    prompt_tokens: List[int],
+    n_logprobs: int,
+    tokenizer: GPT2TokenizerFast,
+) -> Tuple[str, Dict[int, float]]:
+    lp_dict_text_keys = generate_logprobs(
+        engine=engine,
+        prompt=prompt_tokens,
+        n_logprobs=n_logprobs
+    )
+    lp_dict_token_keys = tokenize_keys_in_dict(lp_dict_text_keys, tokenizer=tokenizer)
+    return (model_shortname, lp_dict_token_keys)
+
 
 def query_api_for_models(
     model_shortname_engine_dict: dict,
@@ -250,14 +266,23 @@ def query_api_for_models(
     tokenizer: GPT2TokenizerFast,
 ):
     res_dict = {}
-    for model_shortname, engine in model_shortname_engine_dict.items():
-        lp_dict_text_keys = generate_logprobs(
-            engine=engine,
-            prompt=prompt_tokens,
-            n_logprobs=n_logprobs
-        )
-        lp_dict_token_keys = tokenize_keys_in_dict(lp_dict_text_keys, tokenizer=tokenizer)
-        res_dict[f'{model_shortname}_logprobs'] = lp_dict_token_keys
+
+    # Parallelize
+    with ThreadPoolExecutor() as executor:
+        futures = {
+            executor.submit(
+                generate_and_tokenize_logprobs,
+                model_shortname,
+                engine,
+                prompt_tokens,
+                n_logprobs,
+                tokenizer,
+            ): model_shortname
+            for model_shortname, engine in model_shortname_engine_dict.items()
+        }
+        for future in as_completed(futures):
+            model_shortname = futures[future]
+            res_dict[f"{model_shortname}_logprobs"] = future.result()[1]
     return res_dict
 
 
