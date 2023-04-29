@@ -14,10 +14,10 @@ import approximating_finetuning.helpers as h
 # Load data prepared and aligned by the prep notebook
 look_for_n_rows = 495
 
-with open(f'data/lps_list_{look_for_n_rows}.pkl', 'rb') as f:
+with open(f'data/500_ex/lps_list_{look_for_n_rows}.pkl', 'rb') as f:
     lps_list = pickle.load(f)
     
-with open(f'data/other_list_{look_for_n_rows}.pkl', 'rb') as f:
+with open(f'data/500_ex/other_list_{look_for_n_rows}.pkl', 'rb') as f:
     other_list = pickle.load(f)
 
 # +
@@ -45,20 +45,23 @@ h.calculate_perplexity_per_model(lps_list_test, true_tokens_test)
 # +
 study_name = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 study = optuna.create_study()
-n_trials = 250
+n_trials = 100
     
 def objective(trial):
-    blend_res_val = h.blend_pipeline(
-        lp_dicts = lps_list_val,
+    
+    blended_lps_list_val = h.blend_pipeline(
+        lps_list = lps_list_val,
         small_untuned_temperature=trial.suggest_float('small_untuned_temperature', 0.5, 2),
         small_tuned_temperature=trial.suggest_float('small_tuned_temperature', 0.5, 2),
         big_temperature=trial.suggest_float('big_temperature', 0.5, 2),
         diff_weight=trial.suggest_float('diff_weight', 0.05, 1.0),
     )
-    
-    # TODO simplify
-    ppl_all = h.calculate_perplexity_per_model(blend_res_val, true_tokens_val)
-    ppl = ppl_all['blended']
+        
+    # Since we want to be consistent in matching to the existing tokens of the big model
+    # Even when just calculating ppl for the blended:
+    lps_incl_blended_val = h.merge_blended_and_original_lps(lps_list, blended_lps_list_val)
+    res_dict = h.calculate_perplexity_per_model(lps_incl_blended_val, true_tokens_val, verbosity=0)
+    ppl = res_dict['blended']
     return ppl
 
 study.optimize(objective, n_trials=n_trials)
@@ -66,21 +69,18 @@ study.optimize(objective, n_trials=n_trials)
 
 study.best_params
 
-blend_res_test = h.blend_pipeline(
-    lp_dicts = lps_list_test,
+# +
+blended_lps_list_test = h.blend_pipeline(
+    lps_list = lps_list_test,
     **study.best_params,   
 )
-blend_ppl_test = h.calculate_perplexity_per_model(blend_res_test, true_tokens_test)['blended']
 
-{
-    **{'blended': blend_ppl_test},
-    **h.calculate_perplexity_per_model(lps_list_test, true_tokens_test)
-}
+lps_incl_blended_test = h.merge_blended_and_original_lps(lps_list_test, blended_lps_list_test)
+res_dict = h.calculate_perplexity_per_model(lps_incl_blended_test, true_tokens_test, verbosity=0)
+res_dict
 
 # +
 #joblib.dump(study, f'hyperparam_studies/{study_name}.pkl')
 # -
-
-len(lps_list_test)
 
 

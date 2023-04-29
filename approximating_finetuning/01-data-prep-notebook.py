@@ -32,35 +32,44 @@ test_tokens = tokenizer(test)['input_ids']  # Note: Using test since finetuned o
 
 # Set input params
 #max_iter = 2000  # Original
-max_iter = 3
+max_iter = 300
 n_logprobs = 100
-tokens_back = 300
 
-res = h.model_results_to_list_of_dicts(
-    tokens=test_tokens,
-    tokens_back=tokens_back,
-    max_iter=max_iter,
-    tokenizer=tokenizer,
-    n_logprobs=n_logprobs,
-)
+for tokens_back in [100, 250, 500, 1000, 2000]:
 
-# Dump raw before alignment if need to backtrace anything about alignment pipeline later
-with open(f"data/raw_api_results_{len(res)}.pkl", "wb") as f:
-    pickle.dump(res, f)
+    print(f'\n- - - - {tokens_back=} - - - -')
+    res = h.model_results_to_list_of_dicts(
+        tokens=test_tokens,
+        tokens_back=tokens_back,
+        max_iter=max_iter,
+        tokenizer=tokenizer,
+        n_logprobs=n_logprobs,
+    )
 
-lps_list, other_list = h.alignment_pipeline(res)
+    # Dump raw before alignment if need to backtrace anything about alignment pipeline later
+    with open(f"data/raw_api_results_{len(res)}ex_{tokens_back}tb.pkl", "wb") as f:
+        pickle.dump(res, f)
 
-# Example perplexity
-true_tokens = [r['token'] for r in res]
-h.calculate_perplexity_per_model(lps_list, true_tokens)
+    lps_list, other_list = h.alignment_pipeline(res)
 
-# +
-# Dump to files to read into tuning notebook
-with open(f"data/lps_list_{len(lps_list)}.pkl", "wb") as f:
-    pickle.dump(lps_list, f)
-    
-with open(f"data/other_list_{len(other_list)}.pkl", "wb") as f:
-    pickle.dump(other_list, f)
-# -
+
+    # Example perplexity
+    true_tokens = [r['token'] for r in res]
+    print(h.calculate_perplexity_per_model(lps_list, true_tokens))
+
+    # Dump to files to read into tuning notebook
+    with open(f"data/lps_list_{len(lps_list)}ex_{tokens_back}tb.pkl", "wb") as f:
+        pickle.dump(lps_list, f)
+
+    with open(f"data/other_list_{len(other_list)}ex_{tokens_back}tb.pkl", "wb") as f:
+        pickle.dump(other_list, f)
+
+
+
+
+
+
+
+
 
 

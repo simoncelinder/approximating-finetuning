@@ -145,6 +145,7 @@ def calculate_perplexity_per_model(
     result_list: List[Dict[str, np.ndarray]],
     true_tokens: List[str],
     n_decimals: int = 1,
+    verbosity: int = 1,
 ) -> Dict[str, float]:
     true_probs_per_model = []
     for i, true_token in enumerate(true_tokens):
@@ -159,18 +160,18 @@ def calculate_perplexity_per_model(
         # Seems like same num nans across models and stays constant during tuning, so probably not "gaming" the nans
         percent_nan = true_lps_df.isnull().sum().sum() / (true_lps_df.shape[0] * true_lps_df.shape[1]) * 100
         is_same_rows_that_are_nan = (true_lps_df.isna().all(axis=1) == true_lps_df.isna().any(axis=1)).all()
-        print(f"{is_same_rows_that_are_nan=}")
-        print(
-            f"WARNING: {percent_nan :.2f}% NaNs in true_lps_df for calculating perplexity - They will be dropped. "
-            f"Exact same nan across models = {is_same_rows_that_are_nan}."
-        )
+        if verbosity > 0:
+            print(f"{is_same_rows_that_are_nan=}")
+            print(
+                f"WARNING: {percent_nan :.2f}% NaNs in true_lps_df for calculating perplexity - They will be dropped. "
+                f"Exact same nan across models = {is_same_rows_that_are_nan}."
+            )
         true_lps_df = true_lps_df.dropna()
 
     ppl_per_model = {}
     for c in true_lps_df.columns:
         probs = np.exp(true_lps_df[c])
-        # TODO check why n_decimals doesnt work when passed into calc_perplexity_chunkwise
-        ppl_per_model[c] = round(calc_perplexity_chunkwise(probs), n_decimals)
+        ppl_per_model[c.replace('logprobs', 'ppl')] = round(calc_perplexity_chunkwise(probs), n_decimals)
 
     return ppl_per_model
 
@@ -214,7 +215,7 @@ def model_results_to_list_of_dicts(
     for i in range(tokens_back, len(tokens), step_size):
         if count > max_iter:
             break
-        if i % 5 == 0:
+        if i % 25 == 0:
             print("Iteration: ", count)
         try:
 
@@ -230,7 +231,6 @@ def model_results_to_list_of_dicts(
                 prompt_tokens=prompt_tokens,
                 tokenizer=tokenizer,
             )
-
 
             res_dict = assign_shared_metadata(prompt_text, res_dict, true_token, true_word)
 
@@ -439,15 +439,15 @@ def alignment_pipeline(res: List[Dict[str, Any]]):
 
 
 def blend_pipeline(
-    lp_dicts: List[Dict[str, np.ndarray]],
+    lps_list: List[Dict[str, np.ndarray]],
     small_untuned_temperature: float,
     small_tuned_temperature: float,
     big_temperature: float,
     diff_weight: float,
-) -> List[Dict[str, np.ndarray]]:
-    rescaled_with_temp = []
-    for lp_dict in lp_dicts:
-        rescaled_with_temp.append(
+) -> List[Dict[str, Dict[str, np.ndarray]]]:
+    blended_lps_list = []
+    for lp_dict in lps_list:
+        rescaled_lp_dict = (
             scale_logprobs_for_the_3_models(
                 **lp_dict,
                 small_untuned_temperature=small_untuned_temperature,
@@ -455,21 +455,24 @@ def blend_pipeline(
                 big_temperature=big_temperature,
             )
         )
+        blended_lps = blend_logprobs_with_weight(**rescaled_lp_dict, diff_weight=diff_weight)
+        blended_lps = normalize_logprobs(blended_lps)
+        blended_lps_list.append({'blended': blended_lps})
+    assert len(blended_lps_list) == len(lps_list)
+    # Do not return lps of other models here sinnce we've updated their temperature etc.
+    return blended_lps_list
 
-    incl_blended = []
-    for lp_dict in rescaled_with_temp:
-        blended_lps = blend_logprobs_with_weight(**lp_dict, diff_weight=diff_weight)
-        incl_blended.append({
-            **lp_dict,
-            **{'blended': blended_lps}
-            }
-        )
 
-    final_incl_blend = []
-    for lp_dict in incl_blended:
-        final_incl_blend.append(apply_func_to_all_models(normalize_logprobs, lp_dict))
-
-    return final_incl_blend
+def merge_blended_and_original_lps(
+    lps_list: List[Dict[str, np.ndarray]],
+    blended_lps_list: List[Dict[str, np.ndarray]]
+) -> List[Dict[str, np.ndarray]]:
+    # Separate function to ensure we dont mix up temperature rescaled logprobs with original
+    lps_incl_blended = []
+    for lp_dict, blend_dict in zip(lps_list, blended_lps_list):
+        merged_dict = {**lp_dict, 'blended': blend_dict['blended']}  # Avoid mutating
+        lps_incl_blended.append(merged_dict)
+    return lps_incl_blended
 
 
 def sample_token(

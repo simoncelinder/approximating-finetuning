@@ -46,7 +46,7 @@ try:
         lps_list, _ = h.alignment_pipeline([res_dict])
 
         blend_res = h.blend_pipeline(
-                lp_dicts = lps_list,
+                lps_list = lps_list,
                 **params,
         )
 
