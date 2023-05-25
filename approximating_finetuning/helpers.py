@@ -1,6 +1,9 @@
 import os
 import random
+import pickle
+from copy import deepcopy
 from typing import List, Dict, Any, Callable, Union, Tuple
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -191,8 +194,8 @@ def model_results_to_list_of_dicts(
     n_logprobs: int = 5,
     step_size: int = None,
     tokenizer: GPT2TokenizerFast = None,
+    add_models_dict: dict = None,  # Like when also wanting to query davinci base model
 ) -> List[dict]:
-    print("Warning! This function queries the openai api in a loop")
 
     # Best to use general names for models, so helper functions dont need to be
     # aware of exact models queried
@@ -201,6 +204,9 @@ def model_results_to_list_of_dicts(
         'small_tuned': small_tuned_model,
         'big': big_model,
     }
+
+    if add_models_dict is not None:
+        model_shortname_engine_dict.update(add_models_dict)
 
     if step_size is None:
         # Sample evenly across test set
@@ -445,6 +451,7 @@ def blend_pipeline(
     big_temperature: float,
     diff_weight: float,
 ) -> List[Dict[str, Dict[str, np.ndarray]]]:
+    lps_list = deepcopy(lps_list)
     blended_lps_list = []
     for lp_dict in lps_list:
         rescaled_lp_dict = (
@@ -489,3 +496,51 @@ def sample_token(
     sampled_token_id = int(np.random.choice(list(lp_dict.keys()), p=probs))
 
     return sampled_token_id
+
+
+def align_to_big_model_and_pickle_dump_lists(
+    res: List[dict],
+    subfolder: str,
+    tokens_back: int,
+    print_reality_check: bool = True,
+    verbosity: int = 0,
+) -> None:
+    lps_list, other_list = alignment_pipeline(res)
+
+    # Dump to files to read into tuning notebook
+    with open(f"data/{subfolder}/lps_list_{len(lps_list)}ex_{tokens_back}tb.pkl", "wb") as file:
+        pickle.dump(lps_list, file)
+
+    with open(f"data/{subfolder}/other_list_{len(other_list)}ex_{tokens_back}tb.pkl", "wb") as file:
+        pickle.dump(other_list, file)
+
+    if print_reality_check:
+        true_tokens = [r['token'] for r in res]
+        print(calculate_perplexity_per_model(lps_list, true_tokens, verbosity=verbosity))
+
+
+def override_big_model_with_added_models_and_pickle_dump_lists(
+    res: List[dict],
+    add_models_dict: dict,
+    tokens_back: int,
+    verbosity: int = 0,
+) -> None:
+    """ Also create separate example folder overriding with other added model as big model
+    for comparison - need to rerun alignment of logprobs to this big model(s) instead.
+    Assumes all added models are big models for comparison """
+    res = deepcopy(res)  # Avoid mutating
+    for big_model in add_models_dict.keys():
+        print(f'Overriding big model with {big_model}')
+        separate_subfolder = f'{big_model}'
+        separate_subfolder_path = Path(f"data/{separate_subfolder}")
+        separate_subfolder_path.mkdir(parents=True, exist_ok=True)
+        for r in res:
+            r['big_logprobs'] = r[f'{big_model}_logprobs']
+            del r[f'{big_model}_logprobs']  # Dont need to save on the side as well
+
+        align_to_big_model_and_pickle_dump_lists(
+            res=res,
+            subfolder=separate_subfolder,
+            tokens_back=tokens_back,
+            verbosity=verbosity,
+        )

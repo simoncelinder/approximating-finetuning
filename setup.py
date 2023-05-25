@@ -22,7 +22,6 @@ setup(
     install_requires=[
         'openai==0.25.0',
         'jupyterlab==3.5.2',
-        'jupyterlab==3.5.2',
         'jupytext==1.14.4',
         'pandas==1.5.2',
         'numpy==1.24.1',

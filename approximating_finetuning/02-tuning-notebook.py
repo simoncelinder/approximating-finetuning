@@ -9,6 +9,7 @@ import datetime
 import optuna
 
 import approximating_finetuning.helpers as h
+from approximating_finetuning.global_params import SHARE_VAL
 
 # +
 # Load data prepared and aligned by the prep notebook
@@ -25,7 +26,8 @@ with open(f'data/500_ex/other_list_{look_for_n_rows}.pkl', 'rb') as f:
 # a small base model through OpenAI API on test data.
 # We now also split the test set into val (for tuning) and test (final score), 
 # to ensure hyperparameter tuning isnt overfitted.
-share_val = 0.5
+# We use the imported global variable for consistency across to other notebooks
+share_val = SHARE_VAL  
 n_val = int(len(lps_list)*share_val)
 
 lps_list_val = lps_list[0:n_val]

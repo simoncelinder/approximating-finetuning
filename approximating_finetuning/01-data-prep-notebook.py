@@ -3,11 +3,12 @@
 # - The notebook assumes you have already tuned a model on this dataset that you can use, or access the already tuned through the Cyborgs organization in OpenAI
 #
 
+# +
 # %load_ext autoreload
 # %autoreload 2
 
-# +
 import pickle
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -31,11 +32,22 @@ tokenizer = GPT2TokenizerFast.from_pretrained("gpt2")
 test_tokens = tokenizer(test)['input_ids']  # Note: Using test since finetuned on train
 
 # Set input params
-#max_iter = 2000  # Original
-max_iter = 300
+max_iter = 600
 n_logprobs = 100
 
-for tokens_back in [100, 250, 500, 1000, 2000]:
+# +
+#res[0]
+
+# +
+subfolder = f'text_davinci_003'
+add_models_dict = {'davinci_base': 'davinci'}    # Regular davinci is GPT3 / base
+
+# Could be refactored more nicely:
+subfolder_path = Path(f"data/{subfolder}")
+subfolder_path.mkdir(parents=True, exist_ok=True)
+
+#for tokens_back in [10, 15, 25, 50, 75, 100, 125, 150, 200, 250, 275, 300]:
+for tokens_back in [50, 75, 100, 125, 150, 200, 250, 275, 300]:
 
     print(f'\n- - - - {tokens_back=} - - - -')
     res = h.model_results_to_list_of_dicts(
@@ -44,29 +56,27 @@ for tokens_back in [100, 250, 500, 1000, 2000]:
         max_iter=max_iter,
         tokenizer=tokenizer,
         n_logprobs=n_logprobs,
+        add_models_dict=add_models_dict,
     )
-
+    
     # Dump raw before alignment if need to backtrace anything about alignment pipeline later
-    with open(f"data/raw_api_results_{len(res)}ex_{tokens_back}tb.pkl", "wb") as f:
+    with open(f"data/{subfolder}/raw_api_results_{len(res)}ex_{tokens_back}tb.pkl", "wb") as f:
         pickle.dump(res, f)
-
-    lps_list, other_list = h.alignment_pipeline(res)
-
-
-    # Example perplexity
-    true_tokens = [r['token'] for r in res]
-    print(h.calculate_perplexity_per_model(lps_list, true_tokens))
-
-    # Dump to files to read into tuning notebook
-    with open(f"data/lps_list_{len(lps_list)}ex_{tokens_back}tb.pkl", "wb") as f:
-        pickle.dump(lps_list, f)
-
-    with open(f"data/other_list_{len(other_list)}ex_{tokens_back}tb.pkl", "wb") as f:
-        pickle.dump(other_list, f)
-
-
-
-
+        
+    # TODO: Alignment pipeline to only be part of blending, not have effect on small model logprobs on outside
+    h.align_to_big_model_and_pickle_dump_lists(
+        res=res,
+        subfolder=subfolder,
+        tokens_back=tokens_back,
+    )
+    
+    if add_models_dict is not None:
+        h.override_big_model_with_added_models_and_pickle_dump_lists(
+            res=res,
+            add_models_dict=add_models_dict,
+            tokens_back=tokens_back,
+        )
+# -
 
 
 
