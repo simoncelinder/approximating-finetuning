@@ -148,33 +148,20 @@ def calculate_perplexity_per_model(
     result_list: List[Dict[str, np.ndarray]],
     true_tokens: List[str],
     n_decimals: int = 1,
-    verbosity: int = 1,
+    lp_if_true_token_missing: float = -30.0,
 ) -> Dict[str, float]:
     true_probs_per_model = []
     for i, true_token in enumerate(true_tokens):
         d = result_list[i]
-        if true_token in d['big_logprobs'].keys():
-            true_probs_per_model.append(({k: v[true_token] for k, v in d.items()}))
-        else:
-            true_probs_per_model.append(({k: np.nan for k in d.keys()}))
+        true_probs = {k: v.get(true_token, lp_if_true_token_missing) for k, v in d.items()}
+        true_probs_per_model.append(true_probs)
 
     true_lps_df = pd.DataFrame(true_probs_per_model)
-    if true_lps_df.isnull().values.any():
-        # Seems like same num nans across models and stays constant during tuning, so probably not "gaming" the nans
-        percent_nan = true_lps_df.isnull().sum().sum() / (true_lps_df.shape[0] * true_lps_df.shape[1]) * 100
-        is_same_rows_that_are_nan = (true_lps_df.isna().all(axis=1) == true_lps_df.isna().any(axis=1)).all()
-        if verbosity > 0:
-            print(f"{is_same_rows_that_are_nan=}")
-            print(
-                f"WARNING: {percent_nan :.2f}% NaNs in true_lps_df for calculating perplexity - They will be dropped. "
-                f"Exact same nan across models = {is_same_rows_that_are_nan}."
-            )
-        true_lps_df = true_lps_df.dropna()
 
     ppl_per_model = {}
     for c in true_lps_df.columns:
         probs = np.exp(true_lps_df[c])
-        ppl_per_model[c.replace('logprobs', 'ppl')] = round(calc_perplexity_chunkwise(probs), n_decimals)
+        ppl_per_model[c.replace('_logprobs', '')] = round(calc_perplexity_chunkwise(probs), n_decimals)
 
     return ppl_per_model
 
@@ -293,10 +280,10 @@ def query_api_for_models(
 
 
 def assign_shared_metadata(
-        prompt_text: str,
-        res_dict: dict,
-        true_token: int,  # TODO int or string?
-        true_word: str,
+    prompt_text: str,
+    res_dict: dict,
+    true_token: int,
+    true_word: str,
 ) -> dict:
     res_dict['token'] = true_token
     res_dict['word'] = true_word
@@ -339,18 +326,17 @@ def scale_logprobs_for_the_3_models(
     }
 
 
-def blend_logprobs_with_weight(
+def blend_logprobs(
     small_untuned_logprobs: Dict[int, float],
     small_tuned_logprobs: Dict[int, float],
     big_logprobs: Dict[int, float],
-    diff_weight: float,
 ) -> Dict[int, float]:
     # Assumes:
     # Already aligned all token ids so they are the exact same across models
     # No nan values, they have already been padded with min floats
     assert small_untuned_logprobs.keys() == small_tuned_logprobs.keys() == big_logprobs.keys()
     diffs = (np.array(list(small_tuned_logprobs.values())) - np.array(list(small_untuned_logprobs.values())))
-    blended_arr = np.array(list(big_logprobs.values())) + diff_weight * diffs
+    blended_arr = np.array(list(big_logprobs.values())) + diffs
     return dict(zip(big_logprobs.keys(), blended_arr))
 
 
@@ -396,20 +382,19 @@ def impute_nan_with_min_value(logprobs_dict: Dict[int, float]) -> Dict[int, floa
     return imputed_logprobs_dict
 
 
-def normalize_logprobs(logprobs_dict: Dict[int, float]) -> Dict[int, float]:
-
+def normalize_logprobs_softmax(logprobs_dict: Dict[int, float]) -> Dict[int, float]:
     # Convert the logprobs dictionary to a NumPy array
     logprobs = np.array(list(logprobs_dict.values()))
     token_ids = np.array(list(logprobs_dict.keys()))
 
-    # Compute log normalization constant
-    log_norm_constant = np.log(np.sum(np.exp(logprobs)))
+    # Compute log normalization constant using softmax
+    softmax_probs = np.exp(logprobs) / np.sum(np.exp(logprobs))
 
-    # Subtract the log normalization constant from each logprob
-    normalized_logprobs = logprobs - log_norm_constant
+    # Apply log to convert probabilities to logprobs
+    log_softmax_probs = np.log(softmax_probs)
 
     # Create a new dict with normalized logprobs
-    normalized_logprobs_dict = dict(zip(token_ids, normalized_logprobs))
+    normalized_logprobs_dict = dict(zip(token_ids, log_softmax_probs))
 
     return normalized_logprobs_dict
 
@@ -445,13 +430,17 @@ def alignment_pipeline(res: List[Dict[str, Any]]):
 
 
 def blend_pipeline(
-    lps_list: List[Dict[str, np.ndarray]],
+    res: List[Dict[str, Any]],
     small_untuned_temperature: float,
     small_tuned_temperature: float,
     big_temperature: float,
-    diff_weight: float,
 ) -> List[Dict[str, Dict[str, np.ndarray]]]:
-    lps_list = deepcopy(lps_list)
+    res = deepcopy(res)
+
+    # Avoid side effects on small model logprobs by letting temperature transformations only
+    # happen inside the blending pipeline
+    lps_list, other_list = alignment_pipeline(res)
+
     blended_lps_list = []
     for lp_dict in lps_list:
         rescaled_lp_dict = (
@@ -462,8 +451,10 @@ def blend_pipeline(
                 big_temperature=big_temperature,
             )
         )
-        blended_lps = blend_logprobs_with_weight(**rescaled_lp_dict, diff_weight=diff_weight)
-        blended_lps = normalize_logprobs(blended_lps)
+        blended_lps = blend_logprobs(**rescaled_lp_dict)
+
+        blended_lps = normalize_logprobs_softmax(blended_lps)
+
         blended_lps_list.append({'blended': blended_lps})
     assert len(blended_lps_list) == len(lps_list)
     # Do not return lps of other models here sinnce we've updated their temperature etc.
@@ -499,7 +490,7 @@ def sample_token(
 
 
 def align_to_big_model_and_pickle_dump_lists(
-    res: List[dict],
+    res: List[Dict[str, Any]],
     subfolder: str,
     tokens_back: int,
     print_reality_check: bool = True,
@@ -519,28 +510,25 @@ def align_to_big_model_and_pickle_dump_lists(
         print(calculate_perplexity_per_model(lps_list, true_tokens, verbosity=verbosity))
 
 
-def override_big_model_with_added_models_and_pickle_dump_lists(
-    res: List[dict],
-    add_models_dict: dict,
-    tokens_back: int,
-    verbosity: int = 0,
-) -> None:
-    """ Also create separate example folder overriding with other added model as big model
-    for comparison - need to rerun alignment of logprobs to this big model(s) instead.
-    Assumes all added models are big models for comparison """
-    res = deepcopy(res)  # Avoid mutating
-    for big_model in add_models_dict.keys():
-        print(f'Overriding big model with {big_model}')
-        separate_subfolder = f'{big_model}'
-        separate_subfolder_path = Path(f"data/{separate_subfolder}")
-        separate_subfolder_path.mkdir(parents=True, exist_ok=True)
-        for r in res:
-            r['big_logprobs'] = r[f'{big_model}_logprobs']
-            del r[f'{big_model}_logprobs']  # Dont need to save on the side as well
+def model_perplexity_from_res(
+    res: List[Dict[str, Any]],
+    model_lps_key: str,
+    lp_if_true_token_missing: float = -30.0
+) -> float:
+    assert lp_if_true_token_missing < -5.0
+    true_tokens = [r['token'] for r in res]
+    padded_lps = pd.Series(
+        [result[model_lps_key].get(t, lp_if_true_token_missing) for t, result in zip(true_tokens, res)]
+    )
+    probs = np.exp(padded_lps)
+    return calc_perplexity_chunkwise(probs, rows_per_chunk=50)
 
-        align_to_big_model_and_pickle_dump_lists(
-            res=res,
-            subfolder=separate_subfolder,
-            tokens_back=tokens_back,
-            verbosity=verbosity,
-        )
+
+def override_big_model(
+    res: List[Dict[str, Any]],
+    other_big_model_key: str = 'davinci_base_logprobs'
+) -> List[Dict[str, Any]]:
+    res_override = deepcopy(res)  # Avoid mutating
+    for r in res_override:
+        r['big_logprobs'] = r[other_big_model_key]
+    return res_override

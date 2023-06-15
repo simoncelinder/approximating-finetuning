@@ -138,3 +138,5 @@ dmypy.json
 *.csv
 *.parquet
 *.pkl
+
+/approximating_finetuning/other_analysis/
