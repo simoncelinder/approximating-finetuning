@@ -3,7 +3,6 @@ import random
 import pickle
 from copy import deepcopy
 from typing import List, Dict, Any, Callable, Union, Tuple
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -25,28 +24,6 @@ with open(api_key_abspath, 'r') as f:
 def read_file(file_path):
     with open(file_path, 'r') as f:
         return f.read()
-
-
-def sample_context_and_completion(
-    text: str,
-    n_words_context: int = 150,
-    n_words_completion: int = 100,
-    drop_partial_start: bool = True,
-    drop_partial_end: bool = True,
-) -> tuple:
-    words = text.split(' ')
-    min_ = n_words_context
-    max_ = len(words) - n_words_completion
-    breakpoint = random.randint(min_, max_)
-    context = ' '.join(words[breakpoint - n_words_context: breakpoint])
-    completion = ' '.join(words[breakpoint: breakpoint + n_words_completion])
-    if drop_partial_start:
-        context = ' '.join(context.split('.')[1:])
-    if drop_partial_end:
-        trunc_end = '.'.join(completion.split('.')[0:-1]) + '.'
-        if len(trunc_end) > 0 and not completion[-1] == '.':
-            completion = trunc_end
-    return context, completion
 
 
 def evenly_distributed_sampling(text: str, n_samples: int = 5, sample_n_words: int = None) -> list:
@@ -106,27 +83,6 @@ def tokenize_keys_in_dict(
     return tokenized_dict
 
 
-def lookup_proba_true_token(true_token: int, model_prob_dict: dict, proba_when_not_found: float = -np.inf) -> float:
-    if true_token in model_prob_dict.keys():
-        res_for_token = model_prob_dict[true_token]
-    else:
-        res_for_token = proba_when_not_found
-    return res_for_token
-
-
-def calc_perplexity(proba_series: pd.Series) -> float:
-    # Aligns with: https://towardsdatascience.com/perplexity-intuition-and-derivation-105dd481c8f3
-
-    # Normalize with number of predicted tokens
-    N = len(proba_series)
-
-    # P(w_1, w_2, ... w_n) = p(w_1) * p(w_2) * ... * p(w_n)
-    combined_proba = proba_series.prod()
-
-    # Pexplexity = Nth root of 1/P
-    return (1 / combined_proba) ** (1 / N)
-
-
 def calc_perplexity_chunkwise(s: pd.Series, rows_per_chunk: int = 50, n_decimals: int = 2) -> float:
     # This case required for when passing fewer rows than chunk size, else perplexity can become 0
     if len(s) <= rows_per_chunk:
@@ -166,8 +122,7 @@ def calculate_perplexity_per_model(
     return ppl_per_model
 
 
-def calc_perplexity_copilot(probabilities: pd.Series) -> float:
-    # As autocompleted by Copilot, gives same result as function above but more compact
+def calc_perplexity(probabilities: pd.Series) -> float:
     return np.exp(-np.sum(np.log(probabilities)) / len(probabilities))
 
 
@@ -235,6 +190,7 @@ def model_results_to_list_of_dicts(
         count += 1
 
     return result_list
+
 
 def generate_and_tokenize_logprobs(
     model_shortname: str,
@@ -487,41 +443,6 @@ def sample_token(
     sampled_token_id = int(np.random.choice(list(lp_dict.keys()), p=probs))
 
     return sampled_token_id
-
-
-def align_to_big_model_and_pickle_dump_lists(
-    res: List[Dict[str, Any]],
-    subfolder: str,
-    tokens_back: int,
-    print_reality_check: bool = True,
-    verbosity: int = 0,
-) -> None:
-    lps_list, other_list = alignment_pipeline(res)
-
-    # Dump to files to read into tuning notebook
-    with open(f"data/{subfolder}/lps_list_{len(lps_list)}ex_{tokens_back}tb.pkl", "wb") as file:
-        pickle.dump(lps_list, file)
-
-    with open(f"data/{subfolder}/other_list_{len(other_list)}ex_{tokens_back}tb.pkl", "wb") as file:
-        pickle.dump(other_list, file)
-
-    if print_reality_check:
-        true_tokens = [r['token'] for r in res]
-        print(calculate_perplexity_per_model(lps_list, true_tokens, verbosity=verbosity))
-
-
-def model_perplexity_from_res(
-    res: List[Dict[str, Any]],
-    model_lps_key: str,
-    lp_if_true_token_missing: float = -30.0
-) -> float:
-    assert lp_if_true_token_missing < -5.0
-    true_tokens = [r['token'] for r in res]
-    padded_lps = pd.Series(
-        [result[model_lps_key].get(t, lp_if_true_token_missing) for t, result in zip(true_tokens, res)]
-    )
-    probs = np.exp(padded_lps)
-    return calc_perplexity_chunkwise(probs, rows_per_chunk=50)
 
 
 def override_big_model(

@@ -51,9 +51,9 @@ plot_format = {
 model_name = 'text_davinci_003'
 
 params = {
-    'small_untuned_temperature': 8.66226163868641,
-    'small_tuned_temperature': 2.209180197239623,
-    'big_temperature': 1.658980070394385
+    'small_untuned_temperature': 8.826880965812197,
+    'small_tuned_temperature': 2.233992035896991,
+    'big_temperature': 1.6695405309995934
 }
 
 # Note: The small models CAN have different results when switching big model since they are 
@@ -110,8 +110,6 @@ davinci_3_df.iplot(
 )
 # -
 
-davinci_3_df
-
 # ## Override with davinci base
 
 # +
@@ -121,9 +119,9 @@ davinci_3_df
 model_name = 'davinci_base'
 
 override_params = {
-    'small_untuned_temperature': 7.016784812912596,
-    'small_tuned_temperature': 3.012126074733338,
-    'big_temperature': 1.2074877971083244
+    'small_untuned_temperature': 7.71104729547284,
+    'small_tuned_temperature': 3.5682361618152374,
+    'big_temperature': 1.1444793391335604
 }
 
 # Note: The small models CAN have different results when switching big model since they are 
@@ -235,24 +233,5 @@ compare.iplot(
         **plot_format,
     )
 )
-
-
-
-
-
-
-
-compare.to_csv('blend_compare.csv')
-
-# TODO show only the datapoints on the X axis that actually exist (6, 25 etc)
-compare.iplot(dimensions=(800, 500))
-
-compare
-
-davinci_base_df.head(10)
-
-davinci_3_df.head(10)
-
-print(list(compare.index))
 
 

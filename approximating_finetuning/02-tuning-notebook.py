@@ -132,4 +132,16 @@ override_study.optimize(tune_hypers_override_big_model, n_trials=n_trials)
 
 override_study.best_params
 
+# +
+# Example comparison of perplexity
+override_blended_lps_list_test = h.blend_pipeline(
+    res = res_test,
+    **override_study.best_params,
+)
+
+override_lps_incl_blended_test = h.merge_blended_and_original_lps(lps_list_test, override_blended_lps_list_test)
+override_res_dict = h.calculate_perplexity_per_model(override_lps_incl_blended_test, true_tokens_test)
+override_res_dict
+# -
+
 

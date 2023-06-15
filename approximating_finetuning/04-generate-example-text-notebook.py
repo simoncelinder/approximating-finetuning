@@ -10,10 +10,9 @@ import approximating_finetuning.helpers as h
 
 # Define tuned params
 params = {
-    'small_untuned_temperature': 1.7713928057054265,
-    'small_tuned_temperature': 0.5583126113606277,
-    'big_temperature': 1.9916800757824642,
-    'diff_weight': 0.2312181076944707,
+    'small_untuned_temperature': 8.66226163868641,
+    'small_tuned_temperature': 2.209180197239623,
+    'big_temperature': 1.658980070394385
 }
 
 model_shortname_engine_dict = {
@@ -31,22 +30,29 @@ text_example = "Once upon a time, there was a little prince, living in a beautif
 # ## Blended model
 
 # +
+#res
+# -
+
+params
+
+# +
 tokens = tokenizer(text_example)['input_ids']
 words = tokenizer.decode(tokens)
 
 try:
     for i in range(n_new_tokens):
-        res_dict = h.query_api_for_models(
-            model_shortname_engine_dict=model_shortname_engine_dict,
-            n_logprobs=100,
-            prompt_tokens=tokens,
-            tokenizer=tokenizer,
-        )
-
-        lps_list, _ = h.alignment_pipeline([res_dict])
+        # List wrapping for required format
+        res = [
+                h.query_api_for_models(
+                model_shortname_engine_dict=model_shortname_engine_dict,
+                n_logprobs=100,
+                prompt_tokens=tokens,
+                tokenizer=tokenizer,
+            )
+        ]
 
         blend_res = h.blend_pipeline(
-                lps_list = lps_list,
+                res = res,
                 **params,
         )
 
