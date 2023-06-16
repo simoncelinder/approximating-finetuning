@@ -36,7 +36,7 @@ pip install -e .  # Install requirements of the module
 pip install ."[dev, test]"  # Syntax for installing optional requirements of module
 ```
 
-## Prepare files for environment variables for openai
+## Prepare environment for openai
 - In OpenAIs graphical interface, make sure to set right default organization if you want to tune your own small model on a specific org
 - Add your OpenAI API key to a .env file inside the approximating_finetuning folder, in the style of: API_KEY=your_key
 - For input datasets, they are available here: - https://drive.google.com/drive/folders/1TkWVsu7PVFBGEAYV-11x-yxzEx6Gt7ka?usp=sharing
