@@ -129,8 +129,6 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-/approximating_finetuning/api_key
-/approximating_finetuning/org_id
 *.pt
 /approximating_finetuning/data/
 *DS_Store

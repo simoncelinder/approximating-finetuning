@@ -3,15 +3,7 @@ from setuptools import setup
 optional_dependencies = {
     'test': [
         'pytest==7.2.0',
-        'pytest-cov==4.0.0',
-        'pytest-mock==3.10.0'
     ],
-    'plot': [
-        'plotly==5.11.0',
-        'cufflinks==0.17.3',
-        'chart-studio==1.1.0',
-        'seaborn==0.12.2',
-    ]
 }
 
 setup(
@@ -30,8 +22,12 @@ setup(
         'scipy==1.10.0',
         'joblib==1.2.0',
         'transformers==4.27.4',
+        'python-dotenv==1.0.0',
+        'plotly==5.11.0',
+        'cufflinks==0.17.3',
+        'chart-studio==1.1.0',
+        'seaborn==0.12.2',
     ],
     extras_require=optional_dependencies,
     tests_require=['pytest'],
-    zip_safe=False,
 )

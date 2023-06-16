@@ -1,6 +1,4 @@
 import os
-import random
-import pickle
 from copy import deepcopy
 from typing import List, Dict, Any, Callable, Union, Tuple
 
@@ -9,16 +7,11 @@ import pandas as pd
 import openai
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from transformers import GPT2TokenizerFast
+from dotenv import load_dotenv
 
-
-api_key_abspath = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'api_key')
-
-
-with open(api_key_abspath, 'r') as f:
-    try:
-        openai.api_key = f.read()
-    except Exception as e:
-        print("Seems you have not provided your api key in file! Error:", e)
+# Set API key from .env file
+load_dotenv()
+openai.api_key = os.getenv("API_KEY")
 
 
 def read_file(file_path):
