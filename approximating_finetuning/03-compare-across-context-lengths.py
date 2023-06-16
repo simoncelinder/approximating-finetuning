@@ -16,9 +16,6 @@ from approximating_finetuning.global_params import SHARE_VAL
 cf.go_offline()
 
 # +
-#help(plotly.colors)
-
-# +
 # Note: We use this path for the raw API results also for the later overriding 
 # with davinci base model, which is among other models in these results
 folder = Path(f'data/text_davinci_003')
@@ -43,6 +40,8 @@ plot_format = {
         )
     )
 }
+
+n_smoothings = 3
 # -
 
 # ## text_davinci_003
@@ -103,10 +102,6 @@ davinci_3_df = (
     .set_index('tokens_back')
     .sort_index()
     .iloc[1::]  # Very few tokens in context skew plot
-)
-
-davinci_3_df.iplot(
-    **plot_format
 )
 # -
 
@@ -171,12 +166,9 @@ davinci_base_df = (
     .sort_index()
     .iloc[1::]  # Very few tokens in context skew plot
 )
-
-davinci_base_df.iplot(
-    title= f'Results and blending with big model = {model_name}',
-    **plot_format
-)
 # -
+
+# ## Comparison df
 
 compare = (
     davinci_3_df
@@ -188,21 +180,21 @@ compare = (
 
 # ## Plots for report
 
-# +
-#help(cufflinks.pd.DataFrame.iplot)
-# -
-
-compare.iplot(
+(
+    compare
+    .pipe(h.smoothing, n_smoothings)
+    .iplot(
     title='Full view of all 6 models including blended',
     **plot_format
+    )
 )
 
 (
     compare
+    .pipe(h.smoothing, n_smoothings)
     .loc[compare.index <= 25]
     [[i for i in compare.columns if i != 'small_untuned']]
     .iplot(
-        #title='Small tuned model is best at very short context',
         title='Short context comparison (context length <= 25)',
         **plot_format
     )
@@ -210,6 +202,7 @@ compare.iplot(
 
 (
     compare
+    .pipe(h.smoothing, n_smoothings)
     .loc[
         (compare.index >= 25) & 
         (compare.index <= 200)
@@ -223,6 +216,7 @@ compare.iplot(
 
 (
     compare
+    .pipe(h.smoothing, n_smoothings)
     .loc[
         (compare.index >= 25) & 
         (compare.index <= 200)

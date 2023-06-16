@@ -453,3 +453,10 @@ def override_big_model(
     for r in res_override:
         r['big_logprobs'] = r[other_big_model_key]
     return res_override
+
+
+def smoothing(df: pd.DataFrame, num_times: int = 3) -> pd.DataFrame:
+    result = df.copy()
+    for _ in range(num_times):
+        result = result.rolling(3, center=False, min_periods=1).mean()
+    return result
