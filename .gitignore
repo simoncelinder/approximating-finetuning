@@ -104,11 +104,13 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.pyenv
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+.idea
 
 # Spyder project settings
 .spyderproject
@@ -127,3 +129,12 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+*.pt
+/approximating_finetuning/data/
+*DS_Store
+
+*.csv
+*.parquet
+*.pkl
+
+/approximating_finetuning/other_analysis/
