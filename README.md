@@ -12,8 +12,15 @@ We therefore build a system composed of 3 models:
 Next we find some way to gently nudge the generations of GPT-3 by measuring the difference between the two Babbage models, and applying it directly to the GPT-3 logits (unsure exactly how, and this might require some empirical exploration). We could also maybe do some kind of local search using the Babbage models (since they are really cheap to run), and use the results of that search to inform the GPT-3 generation.
 The goal is to build a composite system which is more useful to generate from than any of the 3 models on their own.
 
+The general formula used for blending is: 
+- diffs = small tuned model logprobs / small tuned model temperature - small untuned model logprobs / small untuned model temperature
+- Blended probs = Softmax(big model logprobs / big model temperature + diffs)
+
 A conceptual overview of the project is provided by this flow chart:
 ![img.png](readme_pictures/overview-flow-chart.png)
+
+As a part of the blending process, we also need to align logprobs across models:
+![img.png](readme_pictures/align-logprobs-to-big-model.png)
 
 ## Example results and conclusions
 Some example result plots:
