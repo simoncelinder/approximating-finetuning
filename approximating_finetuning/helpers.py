@@ -401,7 +401,6 @@ def blend_pipeline(
             )
         )
         blended_lps = blend_logprobs(**rescaled_lp_dict)
-
         blended_lps = normalize_logprobs_softmax(blended_lps)
 
         blended_lps_list.append({'blended': blended_lps})

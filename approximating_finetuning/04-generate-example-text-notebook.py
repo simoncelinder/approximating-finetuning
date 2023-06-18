@@ -3,6 +3,7 @@
 
 # +
 from IPython.display import clear_output
+from copy import deepcopy
 
 from transformers import GPT2TokenizerFast
 
@@ -28,12 +29,6 @@ n_new_tokens = 20
 text_example = "Once upon a time, there was a little prince, living in a beautiful castle with his step father. As it came to pass, "
 
 # ## Blended model
-
-# +
-#res
-# -
-
-params
 
 # +
 tokens = tokenizer(text_example)['input_ids']
@@ -79,5 +74,64 @@ try:
 except KeyboardInterrupt:
     pass
 
+
+
+# ## As multiplier on small model temperatures goes from inf to 1, we should see text become more like childrens books
+
+# ### Note that this is the text-davinci-003 model blending not davinci base
+
+# +
+#text_example = "As the prince left the castle, "
+#text_example = "And then he went to his father, "
+text_example = "As the sun dipped below the horizon, casting a golden glow across the city, "
+#text_example = "When asked about the increasingly "
+n_new_tokens = 50
+
+r = {}
+#for m in [20, 4, 1]:
+for m in [20]:
+    
+    tokens = tokenizer(text_example)['input_ids']
+    words = tokenizer.decode(tokens)
+    
+    # Apply multiplier on the small model temperatures
+    temp_params = deepcopy(params)
+    temp_params['small_untuned_temperature'] *= m
+    temp_params['small_tuned_temperature'] *= m
+    
+    try:
+        for i in range(n_new_tokens):
+            try:
+                res = [
+                        h.query_api_for_models(
+                        model_shortname_engine_dict=model_shortname_engine_dict,
+                        n_logprobs=100,
+                        prompt_tokens=tokens,
+                        tokenizer=tokenizer,
+                    )
+                ]
+
+                blend_res = h.blend_pipeline(
+                        res = res,
+                        **temp_params,
+                )
+
+                next_token = h.sample_token(blend_res[0]['blended'])
+                tokens.append(next_token)
+                words += tokenizer.decode(next_token)
+                words = words.replace("\n\n", "\n")
+                print(words, end=" ")
+                clear_output(wait=True)
+            except:
+                pass
+        r[m] = words
+    except KeyboardInterrupt:
+        pass
+
+r
+# -
+
+
+# r
 
 
